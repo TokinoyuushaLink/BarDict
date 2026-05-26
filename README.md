@@ -1,4 +1,5 @@
-# BarDict
+# BarDict <img width="40" height="40" alt="未命名" src="https://github.com/user-attachments/assets/60b8a6c6-cc33-464e-8187-9366e035be6c" />
+
 macOS菜单栏mdx/mdd查词app
 
 <img width="394" height="437" alt="截屏2026-05-26 下午8 25 52" src="https://github.com/user-attachments/assets/1f189005-a8ee-4a2d-8919-2b9f2ce6f2ca" />

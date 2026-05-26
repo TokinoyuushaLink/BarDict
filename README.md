@@ -52,8 +52,6 @@ macOS菜单栏mdx/mdd查词app
 - Press Enter to confirm  
 - Press Esc to return from detailed view / close the menu window  
 
----
-
 ## Build Instructions:
 1. First, install Command Line Tools and `uv`  
 2. Run:  

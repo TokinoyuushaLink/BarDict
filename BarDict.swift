@@ -169,7 +169,101 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     @objc private func importDict() {
-        DictionaryManager.shared.importDict()
+        let (sqliteURLs, mdxURLs) = DictionaryManager.shared.showImportPanel()
+        DictionaryManager.shared.importSQLite(from: sqliteURLs)
+        if !mdxURLs.isEmpty {
+            convertMDXSequentially(queue: mdxURLs, index: 0)
+        }
+    }
+
+    // MARK: - MDX conversion
+
+    private var conversionProgressPanel: NSPanel?
+
+    private func convertMDXSequentially(queue: [URL], index: Int) {
+        guard index < queue.count else { return }
+        let url = queue[index]
+
+        let panel = makeProgressPanel(filename: url.lastPathComponent)
+        panel.makeKeyAndOrderFront(nil)
+        conversionProgressPanel = panel
+
+        DictionaryManager.shared.convertMDX(at: url, progressHandler: { [weak panel] status in
+            (panel?.contentView?.subviews
+                .compactMap { $0 as? NSTextField }.first)?.stringValue = status
+        }, completion: { [weak self, weak panel] result in
+            panel?.close()
+            self?.conversionProgressPanel = nil
+            if case .failure(let error) = result {
+                self?.showConvertError(error.message, filename: url.lastPathComponent)
+            }
+            self?.convertMDXSequentially(queue: queue, index: index + 1)
+        })
+    }
+
+    private func makeProgressPanel(filename: String) -> NSPanel {
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 72),
+            styleMask: [.titled, .fullSizeContentView, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        panel.title = ""
+        panel.titlebarAppearsTransparent = true
+        panel.isFloatingPanel = true
+        panel.level = .floating
+        panel.isReleasedWhenClosed = false
+        panel.center()
+
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 360, height: 72))
+
+        let spinner = NSProgressIndicator()
+        spinner.style = .spinning
+        spinner.controlSize = .small
+        spinner.isIndeterminate = true
+        spinner.frame = NSRect(x: 20, y: 26, width: 20, height: 20)
+        spinner.startAnimation(nil)
+
+        let label = NSTextField(labelWithString: "正在转换 \(filename)…")
+        label.font = .systemFont(ofSize: 13)
+        label.lineBreakMode = .byTruncatingMiddle
+        label.frame = NSRect(x: 48, y: 27, width: 296, height: 18)
+
+        container.addSubview(spinner)
+        container.addSubview(label)
+        panel.contentView?.addSubview(container)
+        return panel
+    }
+
+    private func showConvertError(_ message: String, filename: String) {
+        let alert = NSAlert()
+        alert.messageText    = "「\(filename)」转换失败"
+        alert.alertStyle     = .critical
+        alert.addButton(withTitle: "好")
+        alert.addButton(withTitle: "复制错误信息")
+
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 380, height: 140))
+        scrollView.hasVerticalScroller = true
+        scrollView.borderType = .bezelBorder
+        scrollView.autohidesScrollers = true
+
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 378, height: 138))
+        textView.string          = message
+        textView.isEditable      = false
+        textView.isSelectable    = true
+        textView.font            = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        textView.textColor       = .labelColor
+        textView.backgroundColor = .textBackgroundColor
+        textView.textContainerInset = NSSize(width: 4, height: 6)
+        scrollView.documentView  = textView
+
+        alert.accessoryView = scrollView
+
+        let response = alert.runModal()
+        if response == .alertSecondButtonReturn {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(message, forType: .string)
+        }
     }
 
     @objc private func toggleDict(_ sender: NSMenuItem) {

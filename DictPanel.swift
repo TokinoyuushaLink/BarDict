@@ -45,6 +45,7 @@ struct DictionaryPanel: View {
                 searchBar
                 Divider()
                 contentArea
+                    .clipped()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -73,10 +74,12 @@ struct DictionaryPanel: View {
                 placeholder: "搜索单词",
                 focusRequest: searchFocusRequest,
                 onTextChange: { newValue in
+                    let wasInDetail = currentHTML != nil
                     currentHTML  = nil
                     selectedWord = nil
                     wordDicts    = []
                     suggestions  = manager.suggest(prefix: newValue, filteredBy: manager.filterNames)
+                    if wasInDetail { onHeightChange(Self.listHeight) }
                 },
                 onSubmit:    confirmSelection,
                 onEscape:    handleEscape,
@@ -116,8 +119,13 @@ struct DictionaryPanel: View {
                     if !history.isEmpty { backButton }
                 }
             }
+            .transition(.asymmetric(
+                insertion: .move(edge: .trailing).combined(with: .opacity),
+                removal:   .move(edge: .trailing).combined(with: .opacity)
+            ))
         } else if currentList.isEmpty {
             ContentUnavailableViewCompat()
+                .transition(.opacity)
         } else {
             VStack(spacing: 0) {
                 if manager.enabledNames.count > 1 {
@@ -126,6 +134,10 @@ struct DictionaryPanel: View {
                 }
                 listView
             }
+            .transition(.asymmetric(
+                insertion: .move(edge: .leading).combined(with: .opacity),
+                removal:   .move(edge: .leading).combined(with: .opacity)
+            ))
         }
     }
 
@@ -267,7 +279,13 @@ struct DictionaryPanel: View {
     }
 
     private func handleEscape() {
-        if !query.isEmpty || currentHTML != nil { clearAll() } else { onDismiss() }
+        if currentHTML != nil {
+            withAnimation(.easeInOut(duration: 0.22)) { clearAll() }
+        } else if !query.isEmpty {
+            clearAll()
+        } else {
+            onDismiss()
+        }
     }
 
     private func clearAll() {
@@ -285,7 +303,9 @@ struct DictionaryPanel: View {
     // Called from list view — clears navigation history
     private func lookup(_ word: String) {
         history = []
-        doLookup(word)
+        withAnimation(.easeInOut(duration: 0.22)) {
+            doLookup(word)
+        }
     }
 
     // Called from entry:// links — pushes current word onto history

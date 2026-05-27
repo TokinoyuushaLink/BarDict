@@ -2,35 +2,52 @@ import SwiftUI
 import WebKit
 
 struct WebEntryView: NSViewRepresentable {
+    typealias NSViewType = TrackpadWebView
+
     let html: String
     let isDark: Bool
     let fontSize: CGFloat
-    var dictCss: String? = nil
-    var onEntryLink: (String) -> Void = { _ in }
+    var dictCss: String?               = nil
+    var onEntryLink:    (String) -> Void = { _ in }
+    var onSwipeRight:   (() -> Void)?    = nil
+    var onSwipeLeft:    (() -> Void)?    = nil
+    var onScrollY:      ((CGFloat) -> Void)? = nil
+    var restoreScrollY: CGFloat          = 0
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
-    func makeNSView(context: Context) -> WKWebView {
+    func makeNSView(context: Context) -> TrackpadWebView {
         let config = WKWebViewConfiguration()
+        // Proxy avoids the retain cycle from add(_:name:)
+        config.userContentController.add(
+            ScriptMessageProxy(context.coordinator), name: "scroll"
+        )
         config.userContentController.addUserScript(WKUserScript(
             source: """
             window.addEventListener('scroll', function() {
                 if (window.scrollX !== 0) window.scrollTo(0, window.scrollY);
+                window.webkit.messageHandlers.scroll.postMessage(window.scrollY);
             }, { passive: true });
             """,
             injectionTime: .atDocumentEnd,
             forMainFrameOnly: true
         ))
-        let webView = WKWebView(frame: .zero, configuration: config)
+        let webView = TrackpadWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
         webView.setValue(false, forKey: "drawsBackground")
         return webView
     }
 
-    func updateNSView(_ webView: WKWebView, context: Context) {
+    func updateNSView(_ webView: TrackpadWebView, context: Context) {
         context.coordinator.parent = self
-        webView.appearance = NSAppearance(named: isDark ? .darkAqua : .aqua)
-        webView.loadHTMLString(wrappedHTML, baseURL: nil)
+        webView.onSwipeRight = onSwipeRight
+        webView.onSwipeLeft  = onSwipeLeft
+        webView.appearance   = NSAppearance(named: isDark ? .darkAqua : .aqua)
+        // Only reload when HTML actually changes — prevents scroll-to-top on unrelated state updates
+        let html = wrappedHTML
+        guard html != context.coordinator.loadedHTML else { return }
+        context.coordinator.loadedHTML = html
+        webView.loadHTMLString(html, baseURL: nil)
     }
 
     // MARK: - HTML wrapper
@@ -154,11 +171,80 @@ struct WebEntryView: NSViewRepresentable {
         """
     }
 
+    // MARK: - JS → Swift message proxy (weak ref avoids retain cycle)
+
+    private final class ScriptMessageProxy: NSObject, WKScriptMessageHandler {
+        weak var coordinator: Coordinator?
+        init(_ c: Coordinator) { coordinator = c }
+        func userContentController(_ userContentController: WKUserContentController,
+                                   didReceive message: WKScriptMessage) {
+            guard let y = message.body as? Double else { return }
+            coordinator?.parent.onScrollY?(CGFloat(y))
+        }
+    }
+
+    // MARK: - Trackpad-aware WKWebView
+
+    final class TrackpadWebView: WKWebView {
+        var onSwipeRight: (() -> Void)?
+        var onSwipeLeft:  (() -> Void)?
+
+        private var cumulativeDX: CGFloat = 0
+        private var cumulativeDY: CGFloat = 0
+        private var isHorizontal: Bool?   = nil
+        private let lockThreshold: CGFloat  = 5
+        private let swipeThreshold: CGFloat = 40
+
+        override func scrollWheel(with event: NSEvent) {
+            if event.phase == .began {
+                cumulativeDX = 0
+                cumulativeDY = 0
+                isHorizontal = nil
+            }
+
+            // Only accumulate real gesture events, not momentum
+            if !event.phase.isEmpty {
+                cumulativeDX += event.scrollingDeltaX
+                cumulativeDY += event.scrollingDeltaY
+            }
+
+            if isHorizontal == nil {
+                let ax = abs(cumulativeDX), ay = abs(cumulativeDY)
+                if ax > lockThreshold || ay > lockThreshold {
+                    isHorizontal = ax > ay
+                }
+            }
+
+            if isHorizontal == true {
+                // Confirmed horizontal: intercept for swipe, never scroll
+                if event.phase == .ended {
+                    if cumulativeDX > swipeThreshold {
+                        onSwipeRight?()
+                    } else if cumulativeDX < -swipeThreshold {
+                        onSwipeLeft?()
+                    }
+                }
+            } else {
+                // Vertical or not yet determined: pass through so rubber-band
+                // elastic scroll at top/bottom is preserved. Any incidental
+                // horizontal drift is reset by the JS scroll listener.
+                super.scrollWheel(with: event)
+            }
+        }
+    }
+
     // MARK: - Navigation delegate
 
     final class Coordinator: NSObject, WKNavigationDelegate {
         var parent: WebEntryView
+        var loadedHTML: String = ""
         init(_ parent: WebEntryView) { self.parent = parent }
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            let y = parent.restoreScrollY
+            guard y > 0 else { return }
+            webView.evaluateJavaScript("window.scrollTo(0, \(y));", completionHandler: nil)
+        }
 
         func webView(_ webView: WKWebView,
                      decidePolicyFor action: WKNavigationAction,

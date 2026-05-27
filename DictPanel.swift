@@ -24,7 +24,33 @@ struct DictionaryPanel: View {
     @State private var currentDictCss:      String?  = nil
 
     // Entry-link navigation history
-    @State private var history: [String] = []
+    @State private var history:        [String] = []
+    @State private var forwardHistory: [String] = []
+
+    private enum NavDirection { case forward, back }
+    @State private var navDirection:    NavDirection = .forward
+    @State private var detailContentId: UUID = UUID()
+
+    // Navigation animation & scroll state
+    @State private var isNavigating:       Bool              = false
+    @State private var currentScrollY:     CGFloat           = 0
+    @State private var scrollPositions:    [String: CGFloat] = [:]
+    @State private var pendingScrollRestore: CGFloat         = 0
+
+    private var navTransition: AnyTransition {
+        switch navDirection {
+        case .forward:
+            return .asymmetric(
+                insertion: .move(edge: .trailing).combined(with: .opacity),
+                removal:   .move(edge: .leading).combined(with: .opacity)
+            )
+        case .back:
+            return .asymmetric(
+                insertion: .move(edge: .leading).combined(with: .opacity),
+                removal:   .move(edge: .trailing).combined(with: .opacity)
+            )
+        }
+    }
 
     @AppStorage("textSizeIndex")      private var textSizeIndex:      Int    = 1
     @AppStorage("useEmbeddedCSS")     private var useEmbeddedCSS:     Bool   = true
@@ -105,6 +131,7 @@ struct DictionaryPanel: View {
                 .buttonStyle(.plain)
             }
         }
+        .fixedSize(horizontal: false, vertical: true)
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
     }
@@ -123,11 +150,21 @@ struct DictionaryPanel: View {
                     html: html,
                     isDark: colorScheme == .dark,
                     fontSize: Self.fontSizes[textSizeIndex],
-                    dictCss: useEmbeddedCSS ? currentDictCss : nil
-                ) { linkedWord in navigateTo(linkedWord) }
+                    dictCss: useEmbeddedCSS ? currentDictCss : nil,
+                    onEntryLink:     { linkedWord in navigateTo(linkedWord) },
+                    onSwipeRight:    { handleSwipeRight() },
+                    onSwipeLeft:     { handleSwipeLeft() },
+                    onScrollY:       { y in currentScrollY = y },
+                    restoreScrollY:  pendingScrollRestore
+                )
                 .overlay(alignment: .topLeading) {
-                    if !history.isEmpty { backButton }
+                    if !history.isEmpty && !isNavigating { backButton }
                 }
+                .overlay(alignment: .topTrailing) {
+                    if !forwardHistory.isEmpty && !isNavigating { forwardButton }
+                }
+                .id(detailContentId)
+                .transition(navTransition)
             }
             .transition(.asymmetric(
                 insertion: .move(edge: .trailing).combined(with: .opacity),
@@ -173,7 +210,8 @@ struct DictionaryPanel: View {
                         ForEach(group.dicts, id: \.self) { name in
                             DictChip(
                                 label: shortDictName(name),
-                                isOn: manager.filterNames.contains(name)
+                                isOn: manager.filterNames.contains(name),
+                                tooltip: name
                             ) {
                                 manager.toggleFilter(name)
                                 onDictChange(name)
@@ -199,7 +237,7 @@ struct DictionaryPanel: View {
         for d in dicts {
             if let code = map[d], !code.isEmpty, let lang = AppLang(rawValue: code) {
                 byLang[code, default: []].append(d)
-                _ = lang
+                _ = lang  // used below for ordering
             } else {
                 none.append(d)
             }
@@ -225,7 +263,8 @@ struct DictionaryPanel: View {
                 ForEach(wordDicts, id: \.self) { name in
                     DictChip(
                         label: shortDictName(name),
-                        isOn: selectedDictName == name
+                        isOn: selectedDictName == name,
+                        tooltip: name
                     ) {
                         switchDict(name)
                     }
@@ -240,7 +279,7 @@ struct DictionaryPanel: View {
 
     private var listView: some View {
         let isRecent = query.trimmingCharacters(in: .whitespaces).isEmpty
-        return List(selection: $selectedWord) {
+        return VStack(spacing: 0) {
             if isRecent {
                 HStack {
                     Text(L.recentSearches)
@@ -257,10 +296,11 @@ struct DictionaryPanel: View {
                     }
                     .buttonStyle(.plain)
                 }
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-                .selectionDisabled()
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                Divider()
             }
+            List(selection: $selectedWord) {
             ForEach(currentList, id: \.self) { word in
                 let selected   = selectedWord == word
                 let showDelete = isRecent && (selected || hoveredWord == word)
@@ -293,16 +333,27 @@ struct DictionaryPanel: View {
                 .listRowSeparator(.hidden)
                 .onHover { isHovered in hoveredWord = isHovered ? word : nil }
             }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
     }
 
-    // MARK: Back button (floats over WebView)
+    // MARK: Back / forward buttons (float over WebView)
 
     private var backButton: some View {
         Button(action: goBack) {
             Image(systemName: "chevron.left")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color.secondary)
+        }
+        .buttonStyle(BackButtonStyle())
+        .padding(10)
+    }
+
+    private var forwardButton: some View {
+        Button(action: goForward) {
+            Image(systemName: "chevron.right")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(Color.secondary)
         }
@@ -337,6 +388,7 @@ struct DictionaryPanel: View {
 
     private func handleEscape() {
         if currentHTML != nil {
+            // Animate detail→list when ESC is pressed from detail view
             withAnimation(.easeInOut(duration: 0.22)) { clearAll() }
         } else if !query.isEmpty {
             clearAll()
@@ -346,34 +398,87 @@ struct DictionaryPanel: View {
     }
 
     private func clearAll() {
-        query            = ""
-        suggestions      = []
-        currentHTML      = nil
-        selectedWord     = nil
-        currentWord      = ""
-        wordDicts        = []
-        selectedDictName = ""
-        history          = []
+        query                = ""
+        suggestions          = []
+        currentHTML          = nil
+        selectedWord         = nil
+        currentWord          = ""
+        wordDicts            = []
+        selectedDictName     = ""
+        history              = []
+        forwardHistory       = []
+        detailContentId      = UUID()
+        scrollPositions      = [:]
+        pendingScrollRestore = 0
+        isNavigating         = false
         onHeightChange(Self.listHeight)
     }
 
-    // Called from list view — clears navigation history
+    // Called from list view — clears navigation history, animates list→detail
     private func lookup(_ word: String) {
-        history = []
+        history              = []
+        forwardHistory       = []
+        pendingScrollRestore = 0
+        navDirection         = .forward
         withAnimation(.easeInOut(duration: 0.22)) {
             doLookup(word)
         }
     }
 
-    // Called from entry:// links — pushes current word onto history
+    // Called from entry:// links — saves scroll position, slides in new word from trailing
     private func navigateTo(_ word: String) {
+        scrollPositions[currentWord] = currentScrollY
         if !currentWord.isEmpty { history.append(currentWord) }
-        doLookup(word)
+        forwardHistory       = []
+        pendingScrollRestore = 0
+        navDirection         = .forward
+        isNavigating         = true
+        withAnimation(.easeInOut(duration: 0.22)) {
+            detailContentId = UUID()
+            doLookup(word)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) { isNavigating = false }
     }
 
     private func goBack() {
         guard let prev = history.popLast() else { return }
-        doLookup(prev)
+        scrollPositions[currentWord] = currentScrollY
+        forwardHistory.append(currentWord)
+        pendingScrollRestore = scrollPositions[prev] ?? 0
+        navDirection         = .back
+        isNavigating         = true
+        withAnimation(.easeInOut(duration: 0.22)) {
+            detailContentId = UUID()
+            doLookup(prev)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) { isNavigating = false }
+    }
+
+    private func goForward() {
+        guard let next = forwardHistory.popLast() else { return }
+        history.append(currentWord)
+        pendingScrollRestore = 0
+        navDirection         = .forward
+        isNavigating         = true
+        withAnimation(.easeInOut(duration: 0.22)) {
+            detailContentId = UUID()
+            doLookup(next)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) { isNavigating = false }
+    }
+
+    private func handleSwipeRight() {
+        if history.isEmpty {
+            isNavigating = true
+            withAnimation(.easeInOut(duration: 0.22)) { clearAll() }
+            // clearAll resets isNavigating, no need for asyncAfter
+        } else {
+            goBack()
+        }
+    }
+
+    private func handleSwipeLeft() {
+        goForward()
     }
 
     private func doLookup(_ word: String) {
@@ -418,9 +523,17 @@ private struct BackButtonStyle: ButtonStyle {
 // MARK: - Chip button (shared by filter bar and dict switcher)
 
 private struct DictChip: View {
-    let label:  String
-    let isOn:   Bool
-    let action: () -> Void
+    let label:   String
+    let isOn:    Bool
+    let tooltip: String?
+    let action:  () -> Void
+
+    init(label: String, isOn: Bool, tooltip: String? = nil, action: @escaping () -> Void) {
+        self.label   = label
+        self.isOn    = isOn
+        self.tooltip = tooltip
+        self.action  = action
+    }
 
     var body: some View {
         Button(action: action) {
@@ -433,6 +546,7 @@ private struct DictChip: View {
                 .clipShape(Capsule())
         }
         .buttonStyle(.plain)
+        .help(tooltip ?? "")
     }
 }
 

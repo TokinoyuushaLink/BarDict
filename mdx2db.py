@@ -54,7 +54,7 @@ CSS_LINK_RE = re.compile(r'<link[^>]+rel=["\']stylesheet["\'][^>]*/?\>', re.IGNO
 def convert(mdx_path: pathlib.Path, db_path: pathlib.Path) -> None:
     # 检测同名 CSS 文件
     css_path = mdx_path.with_suffix('.css')
-    css_content: str | None = None
+    css_content = None  # Optional[str]
     if css_path.exists():
         css_content = css_path.read_text(encoding='utf-8', errors='ignore')
         print(f"  发现附属 CSS: {css_path.name}")
@@ -85,7 +85,7 @@ def convert(mdx_path: pathlib.Path, db_path: pathlib.Path) -> None:
         cur.execute('INSERT INTO meta VALUES (?, ?)', ('css', css_content))
 
     count = 0
-    batch: list[tuple[str, str]] = []
+    batch = []  # list[tuple[str, str]]
     print('正在转换词条…')
 
     for key, val in mdx.items():

@@ -115,23 +115,115 @@ final class DictionaryManager: ObservableObject {
 
     // MARK: - Import via Finder
 
-    func importDict() {
+    /// Shows a file picker for .sqlite and .mdx files.
+    /// Returns selected URLs separated by type; does NOT import or convert anything.
+    func showImportPanel() -> (sqlite: [URL], mdx: [URL]) {
         let panel = NSOpenPanel()
-        panel.title               = "导入词典"
-        panel.message             = "选择由 build_db.py 生成的 .sqlite 文件"
+        panel.title   = "导入词典"
+        panel.message = "选择 .mdx 词典文件或已转换的 .sqlite 文件"
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories    = false
-        if let t = UTType(filenameExtension: "sqlite") { panel.allowedContentTypes = [t] }
+        var types: [UTType] = []
+        if let t = UTType(filenameExtension: "sqlite") { types.append(t) }
+        if let t = UTType(filenameExtension: "mdx")    { types.append(t) }
+        panel.allowedContentTypes = types
+        guard panel.runModal() == .OK else { return ([], []) }
+        let sqlite = panel.urls.filter { $0.pathExtension.lowercased() == "sqlite" }
+        let mdx    = panel.urls.filter { $0.pathExtension.lowercased() == "mdx" }
+        return (sqlite, mdx)
+    }
 
-        guard panel.runModal() == .OK else { return }
-
+    func importSQLite(from urls: [URL]) {
+        guard !urls.isEmpty else { return }
         let fm = FileManager.default
-        for url in panel.urls {
+        for url in urls {
             let dest = Self.dirURL.appendingPathComponent(url.lastPathComponent)
             try? fm.removeItem(at: dest)
             try? fm.copyItem(at: url, to: dest)
         }
         refresh()
+    }
+
+    // MARK: - MDX conversion
+
+    enum ConverterError: Error {
+        case binaryNotFound
+        case processFailed(String)
+
+        var message: String {
+            switch self {
+            case .binaryNotFound:
+                return "找不到内置转换器（Resources/converter/mdx2db）。\n请重新运行 ./build.sh 构建应用。"
+            case .processFailed(let output):
+                return output.isEmpty ? "转换进程异常退出，无错误输出。" : output
+            }
+        }
+    }
+
+    /// Runs the bundled mdx2db converter in the background.
+    /// Calls progressHandler on main thread with each output line.
+    /// Calls completion on main thread when finished.
+    func convertMDX(at url: URL,
+                    progressHandler: @escaping (String) -> Void,
+                    completion: @escaping (Result<Void, ConverterError>) -> Void) {
+        let resourcesURL = Bundle.main.resourceURL ?? Bundle.main.bundleURL
+            .appendingPathComponent("Contents/Resources")
+        let converterURL = resourcesURL.appendingPathComponent("converter/mdx2db")
+
+        guard FileManager.default.fileExists(atPath: converterURL.path) else {
+            completion(.failure(.binaryNotFound))
+            return
+        }
+
+        let outputURL = Self.dirURL
+            .appendingPathComponent(url.deletingPathExtension().lastPathComponent + ".sqlite")
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            let process = Process()
+            process.executableURL = converterURL
+            process.arguments     = [url.path, outputURL.path]
+
+            let outPipe = Pipe()
+            let errPipe = Pipe()
+            process.standardOutput = outPipe
+            process.standardError  = errPipe
+
+            var collectedOutput: [String] = []
+
+            outPipe.fileHandleForReading.readabilityHandler = { handle in
+                guard let line = String(data: handle.availableData, encoding: .utf8) else { return }
+                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { return }
+                collectedOutput.append(trimmed)
+                DispatchQueue.main.async { progressHandler(trimmed) }
+            }
+
+            do {
+                try process.run()
+                process.waitUntilExit()
+            } catch {
+                DispatchQueue.main.async {
+                    completion(.failure(.processFailed(error.localizedDescription)))
+                }
+                return
+            }
+
+            outPipe.fileHandleForReading.readabilityHandler = nil
+            let errData   = errPipe.fileHandleForReading.readDataToEndOfFile()
+            let errString = String(data: errData, encoding: .utf8) ?? ""
+
+            if process.terminationStatus == 0 {
+                DispatchQueue.main.async {
+                    self.refresh()
+                    completion(.success(()))
+                }
+            } else {
+                let combined = (collectedOutput + [errString])
+                    .joined(separator: "\n")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                DispatchQueue.main.async { completion(.failure(.processFailed(combined))) }
+            }
+        }
     }
 
     // MARK: - Query

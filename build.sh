@@ -81,17 +81,59 @@ swiftc \
     -framework WebKit \
     -lsqlite3 \
     -target "$(uname -m)-apple-macos14.0" \
-    "$SCRIPT_DIR/Localize.swift" \
-    "$SCRIPT_DIR/BarDict.swift" \
-    "$SCRIPT_DIR/HTMLNode.swift" \
-    "$SCRIPT_DIR/DictStore.swift" \
-    "$SCRIPT_DIR/EntryView.swift" \
-    "$SCRIPT_DIR/DictManager.swift" \
-    "$SCRIPT_DIR/WebEntryView.swift" \
-    "$SCRIPT_DIR/DictPanel.swift" \
+    "$SCRIPT_DIR"/Localize.swift \
+    "$SCRIPT_DIR"/BarDict.swift \
+    "$SCRIPT_DIR"/HTMLNode.swift \
+    "$SCRIPT_DIR"/DictStore.swift \
+    "$SCRIPT_DIR"/EntryView.swift \
+    "$SCRIPT_DIR"/DictManager.swift \
+    "$SCRIPT_DIR"/WebEntryView.swift \
+    "$SCRIPT_DIR"/DictPanel.swift \
     -o "$BIN"
 
-# 5. 生成 Info.plist
+# 5. 打包 Python MDX 转换器
+echo "🐍 正在打包 MDX 转换器..."
+CONV_VENV="$SCRIPT_DIR/.conv_venv"
+CONV_OUT="$RESOURCES/converter"
+
+if ! command -v uv &>/dev/null; then
+    echo "⚠️  未找到 uv，跳过转换器打包（导入 MDX 功能将不可用）"
+else
+    # 用 Python 3.12 创建独立构建环境（PyInstaller 尚不支持 3.14）
+    uv venv "$CONV_VENV" --python 3.12 --quiet
+
+    # 安装依赖
+    uv pip install --python "$CONV_VENV" mdict-utils pyinstaller --quiet
+
+    "$CONV_VENV/bin/pyinstaller" \
+        --onedir --name mdx2db --noconfirm --clean --log-level WARN \
+        --distpath "$SCRIPT_DIR/dist" \
+        --workpath "$SCRIPT_DIR/build_tmp" \
+        --specpath "$SCRIPT_DIR" \
+        --hidden-import mdict_utils.base \
+        --hidden-import mdict_utils.base.lzo \
+        --hidden-import mdict_utils.base.readmdict \
+        --hidden-import mdict_utils.base.pureSalsa20 \
+        --hidden-import mdict_utils.base.ripemd128 \
+        "$SCRIPT_DIR/mdx2db.py"
+
+    # 复制到 Resources/converter/
+    rm -rf "$CONV_OUT"
+    cp -r "$SCRIPT_DIR/dist/mdx2db" "$CONV_OUT"
+
+    # ad-hoc 签名（本地运行必须）
+    find "$CONV_OUT" -type f -perm +111 | while read -r f; do
+        codesign --force --sign - "$f" 2>/dev/null || true
+    done
+
+    # 清理构建临时文件
+    rm -rf "$SCRIPT_DIR/dist" "$SCRIPT_DIR/build_tmp" \
+           "$SCRIPT_DIR/mdx2db.spec" "$CONV_VENV"
+
+    echo "✅ 转换器打包完成 → $CONV_OUT"
+fi
+
+# 6. 生成 Info.plist
 cat > "$CONTENTS/Info.plist" << 'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
@@ -103,8 +145,8 @@ cat > "$CONTENTS/Info.plist" << 'PLIST'
     <key>CFBundleName</key>                  <string>BarDict</string>
     <key>CFBundleDisplayName</key>           <string>BarDict</string>
     <key>CFBundlePackageType</key>           <string>APPL</string>
-    <key>CFBundleShortVersionString</key>    <string>1.1.0</string>
-    <key>CFBundleVersion</key>               <string>1.1.0</string>
+    <key>CFBundleShortVersionString</key>    <string>1.2.0</string>
+    <key>CFBundleVersion</key>               <string>1.2.0</string>
     <key>LSMinimumSystemVersion</key>        <string>14.0</string>
     <key>LSUIElement</key>                   <true/>
     <key>NSPrincipalClass</key>              <string>NSApplication</string>

@@ -16,6 +16,7 @@ struct DictionaryPanel: View {
     @State private var recents:      [String] = RecentStore.load()
     @State private var searchFocusRequest: Int = 0
     @State private var hoveredWord:  String? = nil
+    @State private var pressedWord:  String? = nil
 
     // Multi-dict detail state
     @State private var currentWord:         String   = ""
@@ -237,7 +238,7 @@ struct DictionaryPanel: View {
         for d in dicts {
             if let code = map[d], !code.isEmpty, let lang = AppLang(rawValue: code) {
                 byLang[code, default: []].append(d)
-                _ = lang
+                _ = lang  // used below for ordering
             } else {
                 none.append(d)
             }
@@ -329,9 +330,18 @@ struct DictionaryPanel: View {
                     }
                 }
                 .tag(word)
-                .listRowBackground(selected ? Color.accentColor : Color.clear)
+                .listRowBackground(
+                    selected ? Color.accentColor :
+                    pressedWord == word ? Color.secondary.opacity(0.18) :
+                    Color.clear
+                )
                 .listRowSeparator(.hidden)
                 .onHover { isHovered in hoveredWord = isHovered ? word : nil }
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { _ in pressedWord = word }
+                        .onEnded   { _ in pressedWord = nil }
+                )
             }
             }
             .listStyle(.plain)
@@ -388,6 +398,7 @@ struct DictionaryPanel: View {
 
     private func handleEscape() {
         if currentHTML != nil {
+            // Animate detail→list when ESC is pressed from detail view
             withAnimation(.easeInOut(duration: 0.22)) { clearAll() }
         } else if !query.isEmpty {
             clearAll()
@@ -470,6 +481,7 @@ struct DictionaryPanel: View {
         if history.isEmpty {
             isNavigating = true
             withAnimation(.easeInOut(duration: 0.22)) { clearAll() }
+            // clearAll resets isNavigating, no need for asyncAfter
         } else {
             goBack()
         }

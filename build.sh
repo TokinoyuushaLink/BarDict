@@ -83,9 +83,7 @@ swiftc \
     -target "$(uname -m)-apple-macos14.0" \
     "$SCRIPT_DIR/Localize.swift" \
     "$SCRIPT_DIR/BarDict.swift" \
-    "$SCRIPT_DIR/HTMLNode.swift" \
     "$SCRIPT_DIR/DictStore.swift" \
-    "$SCRIPT_DIR/EntryView.swift" \
     "$SCRIPT_DIR/DictManager.swift" \
     "$SCRIPT_DIR/WebEntryView.swift" \
     "$SCRIPT_DIR/DictPanel.swift" \
@@ -103,8 +101,8 @@ cat > "$CONTENTS/Info.plist" << 'PLIST'
     <key>CFBundleName</key>                  <string>BarDict</string>
     <key>CFBundleDisplayName</key>           <string>BarDict</string>
     <key>CFBundlePackageType</key>           <string>APPL</string>
-    <key>CFBundleShortVersionString</key>    <string>1.2.0</string>
-    <key>CFBundleVersion</key>               <string>1.2.0</string>
+    <key>CFBundleShortVersionString</key>    <string>1.2.1</string>
+    <key>CFBundleVersion</key>               <string>1.2.1</string>
     <key>LSMinimumSystemVersion</key>        <string>14.0</string>
     <key>LSUIElement</key>                   <true/>
     <key>NSPrincipalClass</key>              <string>NSApplication</string>

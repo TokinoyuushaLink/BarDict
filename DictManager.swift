@@ -55,7 +55,13 @@ final class DictionaryManager: ObservableObject {
 
         var newStores: [String: DictionaryStore] = [:]
         for info in infos {
-            newStores[info.name] = stores[info.name] ?? DictionaryStore(path: info.url.path)
+            if let existing = stores[info.name] {
+                newStores[info.name] = existing
+            } else if let store = DictionaryStore(path: info.url.path) {
+                newStores[info.name] = store
+            } else {
+                print("[BarDict] 无法打开词典数据库: \(info.url.lastPathComponent)")
+            }
         }
 
         allDicts     = infos
@@ -154,7 +160,7 @@ final class DictionaryManager: ObservableObject {
 
     /// Which dicts among `dicts` actually have an entry for `word`
     func availableDicts(for word: String, among dicts: [String]) -> [String] {
-        dicts.filter { stores[$0]?.html(for: word) != nil }
+        dicts.filter { stores[$0]?.contains(word) == true }
     }
 
     /// HTML from a specific dict

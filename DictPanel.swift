@@ -237,7 +237,7 @@ struct DictionaryPanel: View {
         for d in dicts {
             if let code = map[d], !code.isEmpty, let lang = AppLang(rawValue: code) {
                 byLang[code, default: []].append(d)
-                _ = lang  // used below for ordering
+                _ = lang
             } else {
                 none.append(d)
             }
@@ -388,7 +388,6 @@ struct DictionaryPanel: View {
 
     private func handleEscape() {
         if currentHTML != nil {
-            // Animate detail→list when ESC is pressed from detail view
             withAnimation(.easeInOut(duration: 0.22)) { clearAll() }
         } else if !query.isEmpty {
             clearAll()
@@ -471,7 +470,6 @@ struct DictionaryPanel: View {
         if history.isEmpty {
             isNavigating = true
             withAnimation(.easeInOut(duration: 0.22)) { clearAll() }
-            // clearAll resets isNavigating, no need for asyncAfter
         } else {
             goBack()
         }

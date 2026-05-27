@@ -81,6 +81,7 @@ swiftc \
     -framework WebKit \
     -lsqlite3 \
     -target "$(uname -m)-apple-macos14.0" \
+    "$SCRIPT_DIR"/Localize.swift \
     "$SCRIPT_DIR"/BarDict.swift \
     "$SCRIPT_DIR"/HTMLNode.swift \
     "$SCRIPT_DIR"/DictStore.swift \

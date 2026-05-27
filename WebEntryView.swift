@@ -145,6 +145,25 @@ struct WebEntryView: NSViewRepresentable {
         dd { margin-left: 12px; }
         dd.empt, dd:empty { display: none !important; }
 
+        /* --- 新世纪汉英大词典 结构 --- */
+        /* 词性标签 h5 默认 margin 是空行主因 */
+        h5 { margin: 4px 0 1px; font-size: 0.88em; font-weight: normal; color: #888; }
+        /* 义项列表去掉默认缩进和 bullet */
+        ol.info-list { margin: 0; padding-left: 0; list-style: none; }
+        ol.info-list > li { margin: 2px 0; padding: 0; }
+        /* 每个义项前的 height:1px 占位 div */
+        div[style*="height: 1px"] { display: none !important; }
+        /* 发音按钮隐藏（不可点击但占行高） */
+        .btn-sound { display: none !important; }
+        /* 例句块 */
+        .info-cite { margin: 1px 0 1px 14px; }
+        .info-cite p { margin: 1px 0; }
+        /* 义项编号 */
+        i.number { font-style: normal; color: #999; font-size: 0.85em; margin-right: 3px; }
+        /* 相关词条列表 */
+        p.gray { margin: 1px 0; font-size: 0.88em; }
+        p:empty, p.gray:empty { display: none !important; }
+
         /* --- Oxford frequency chart (no CSS in db) --- */
         ranks { display: none !important; }
 

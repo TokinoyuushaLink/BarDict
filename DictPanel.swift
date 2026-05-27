@@ -16,6 +16,7 @@ struct DictionaryPanel: View {
     @State private var recents:      [String] = RecentStore.load()
     @State private var searchFocusRequest: Int = 0
     @State private var hoveredWord:  String? = nil
+    @State private var pressedWord:  String? = nil
 
     // Multi-dict detail state
     @State private var currentWord:         String   = ""
@@ -329,9 +330,18 @@ struct DictionaryPanel: View {
                     }
                 }
                 .tag(word)
-                .listRowBackground(selected ? Color.accentColor : Color.clear)
+                .listRowBackground(
+                    selected ? Color.accentColor :
+                    pressedWord == word ? Color.secondary.opacity(0.18) :
+                    Color.clear
+                )
                 .listRowSeparator(.hidden)
                 .onHover { isHovered in hoveredWord = isHovered ? word : nil }
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { _ in pressedWord = word }
+                        .onEnded   { _ in pressedWord = nil }
+                )
             }
             }
             .listStyle(.plain)

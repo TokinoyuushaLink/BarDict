@@ -54,6 +54,16 @@ final class DictionaryStore {
         return results
     }
 
+    /// 轻量存在性检查，避免为判断 nil 而拉取完整 HTML
+    func contains(_ word: String) -> Bool {
+        let sql = "SELECT 1 FROM entries WHERE word = ? COLLATE NOCASE LIMIT 1;"
+        var stmt: OpaquePointer?
+        defer { sqlite3_finalize(stmt) }
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
+        sqlite3_bind_text(stmt, 1, word, -1, SQLITE_TRANSIENT)
+        return sqlite3_step(stmt) == SQLITE_ROW
+    }
+
     /// 读取词典附属 CSS（存储在 meta 表中，旧格式词典无此表时返回 nil）
     func css() -> String? {
         let sql = "SELECT value FROM meta WHERE key = 'css' LIMIT 1;"

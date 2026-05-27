@@ -55,7 +55,13 @@ final class DictionaryManager: ObservableObject {
 
         var newStores: [String: DictionaryStore] = [:]
         for info in infos {
-            newStores[info.name] = stores[info.name] ?? DictionaryStore(path: info.url.path)
+            if let existing = stores[info.name] {
+                newStores[info.name] = existing
+            } else if let store = DictionaryStore(path: info.url.path) {
+                newStores[info.name] = store
+            } else {
+                print("[BarDict] 无法打开词典数据库: \(info.url.lastPathComponent)")
+            }
         }
 
         allDicts     = infos
@@ -188,13 +194,16 @@ final class DictionaryManager: ObservableObject {
             process.standardOutput = outPipe
             process.standardError  = errPipe
 
+            let outputLock = NSLock()
             var collectedOutput: [String] = []
 
             outPipe.fileHandleForReading.readabilityHandler = { handle in
                 guard let line = String(data: handle.availableData, encoding: .utf8) else { return }
                 let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty else { return }
+                outputLock.lock()
                 collectedOutput.append(trimmed)
+                outputLock.unlock()
                 DispatchQueue.main.async { progressHandler(trimmed) }
             }
 
@@ -246,7 +255,7 @@ final class DictionaryManager: ObservableObject {
 
     /// Which dicts among `dicts` actually have an entry for `word`
     func availableDicts(for word: String, among dicts: [String]) -> [String] {
-        dicts.filter { stores[$0]?.html(for: word) != nil }
+        dicts.filter { stores[$0]?.contains(word) == true }
     }
 
     /// HTML from a specific dict

@@ -12,6 +12,7 @@ macOS菜单栏mdx/mdd查词app
 - 支持现有MDict2.x，1.x,lzo压缩格式的mdx
 - 支持全局快捷键打开，目前有shift+space和option+space
 - 允许多词典命中，多词典切换
+- 允许通过数控板切换视图
 
 
 ## 操作：
@@ -44,7 +45,8 @@ macOS菜单栏mdx/mdd查词app
 - Dynamic height scaling with subtle animation  
 - Supports existing MDict 2.x, 1.x, and lzo-compressed MDX formats  
 - Global hotkey support (currently Shift+Space and Option+Space)  
-- Supports multiple dictionary matches and switching between them  
+- Supports multiple dictionary matches and switching between them
+- Allow using Trackpad gesture to navigate views
 
 ## Usage:
 - Click the menu bar icon / use global hotkey to open the menu bar app  

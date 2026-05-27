@@ -126,6 +126,10 @@ struct WebEntryView: NSViewRepresentable {
         dl { margin: 0; }
         dt { font-weight: 600; margin-top: 6px; }
         dd { margin-left: 12px; }
+        dd.empt, dd:empty { display: none !important; }
+
+        /* --- Oxford frequency chart (no CSS in db) --- */
+        ranks { display: none !important; }
 
         /* --- Block horizontal overflow --- */
         html { overflow-x: hidden; max-width: 100vw; }

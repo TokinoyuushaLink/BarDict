@@ -26,6 +26,9 @@ final class DictionaryManager: ObservableObject {
     @Published private(set) var allDicts:    [DictInfo] = []
     @Published private(set) var enabledNames: [String]  = []
     @Published private(set) var filterNames:  [String]  = []   // subset shown in list
+    @Published              var dictLangMap:  [String: String] = {
+        (UserDefaults.standard.dictionary(forKey: "dictLangMap") as? [String: String]) ?? [:]
+    }()
 
     private var stores: [String: DictionaryStore] = [:]
 
@@ -80,13 +83,32 @@ final class DictionaryManager: ObservableObject {
     // MARK: - Toggle filter (from list filter bar)
 
     func toggleFilter(_ name: String) {
+        let clickedLang = dictLangMap[name]   // nil = unassigned group
+
         if filterNames.contains(name) {
             guard filterNames.count > 1 else { return }
             filterNames.removeAll { $0 == name }
         } else {
-            filterNames.append(name)
+            // If the clicked dict is from a different language group, clear the current selection
+            let currentLangs = Set(filterNames.map { dictLangMap[$0] })
+            if !currentLangs.isEmpty && !currentLangs.contains(clickedLang) {
+                filterNames = [name]
+            } else {
+                filterNames.append(name)
+            }
         }
         UserDefaults.standard.set(filterNames, forKey: Self.filterKey)
+    }
+
+    // MARK: - Dict language assignment
+
+    func setDictLang(_ dictName: String, lang: String) {
+        if lang.isEmpty {
+            dictLangMap.removeValue(forKey: dictName)
+        } else {
+            dictLangMap[dictName] = lang
+        }
+        UserDefaults.standard.set(dictLangMap, forKey: "dictLangMap")
     }
 
     var isEmpty: Bool { allDicts.isEmpty }

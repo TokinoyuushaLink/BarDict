@@ -6,6 +6,7 @@ import AppKit
 struct DictionaryPanel: View {
     var onDismiss:      () -> Void        = {}
     var onHeightChange: (CGFloat) -> Void = { _ in }
+    var onDictChange:   (String) -> Void  = { _ in }
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var query          = ""
@@ -25,8 +26,9 @@ struct DictionaryPanel: View {
     // Entry-link navigation history
     @State private var history: [String] = []
 
-    @AppStorage("textSizeIndex")    private var textSizeIndex:    Int  = 1
-    @AppStorage("useEmbeddedCSS")   private var useEmbeddedCSS:   Bool = true
+    @AppStorage("textSizeIndex")      private var textSizeIndex:      Int    = 1
+    @AppStorage("useEmbeddedCSS")     private var useEmbeddedCSS:     Bool   = true
+    @AppStorage("preferredLanguage")  private var preferredLanguage:  String = ""
     @ObservedObject private var manager = DictionaryManager.shared
 
     static  let listHeight:   CGFloat = 380
@@ -48,6 +50,7 @@ struct DictionaryPanel: View {
                     .clipped()
             }
         }
+        .id(preferredLanguage)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background {
             if colorScheme == .light {
@@ -71,15 +74,22 @@ struct DictionaryPanel: View {
                 .font(.body)
             SearchField(
                 text: $query,
-                placeholder: "搜索单词",
+                placeholder: L.searchPlaceholder,
                 focusRequest: searchFocusRequest,
                 onTextChange: { newValue in
                     let wasInDetail = currentHTML != nil
-                    currentHTML  = nil
-                    selectedWord = nil
-                    wordDicts    = []
-                    suggestions  = manager.suggest(prefix: newValue, filteredBy: manager.filterNames)
-                    if wasInDetail { onHeightChange(Self.listHeight) }
+                    let update = {
+                        currentHTML  = nil
+                        selectedWord = nil
+                        wordDicts    = []
+                        suggestions  = manager.suggest(prefix: newValue, filteredBy: manager.filterNames)
+                        if wasInDetail { onHeightChange(Self.listHeight) }
+                    }
+                    if wasInDetail {
+                        withAnimation(.easeInOut(duration: 0.22)) { update() }
+                    } else {
+                        update()
+                    }
                 },
                 onSubmit:    confirmSelection,
                 onEscape:    handleEscape,
@@ -88,7 +98,7 @@ struct DictionaryPanel: View {
                 onTab:       { shift in if currentHTML == nil { moveSelection(by: shift ? -1 : 1) } }
             )
             if !query.isEmpty {
-                Button { clearAll() } label: {
+                Button { withAnimation(.easeInOut(duration: 0.22)) { clearAll() } } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(Color.secondary)
                 }
@@ -123,16 +133,17 @@ struct DictionaryPanel: View {
                 insertion: .move(edge: .trailing).combined(with: .opacity),
                 removal:   .move(edge: .trailing).combined(with: .opacity)
             ))
-        } else if currentList.isEmpty {
-            ContentUnavailableViewCompat()
-                .transition(.opacity)
         } else {
             VStack(spacing: 0) {
                 if manager.enabledNames.count > 1 {
                     filterBar
                     Divider()
                 }
-                listView
+                if currentList.isEmpty {
+                    ContentUnavailableViewCompat()
+                } else {
+                    listView
+                }
             }
             .transition(.asymmetric(
                 insertion: .move(edge: .leading).combined(with: .opacity),
@@ -144,19 +155,65 @@ struct DictionaryPanel: View {
     // MARK: Filter bar (list mode, below search)
 
     private var filterBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                ForEach(manager.enabledNames, id: \.self) { name in
-                    DictChip(
-                        label: shortDictName(name),
-                        isOn: manager.filterNames.contains(name)
-                    ) {
-                        manager.toggleFilter(name)
+        let groups     = langGroups(dicts: manager.enabledNames, map: manager.dictLangMap)
+        let showLabels = groups.count > 1
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 0) {
+                ForEach(Array(groups.enumerated()), id: \.offset) { idx, group in
+                    if idx > 0 {
+                        Divider().frame(height: 14).padding(.horizontal, 6)
+                    }
+                    if showLabels {
+                        Text(group.label)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .padding(.trailing, 4)
+                    }
+                    HStack(spacing: 6) {
+                        ForEach(group.dicts, id: \.self) { name in
+                            DictChip(
+                                label: shortDictName(name),
+                                isOn: manager.filterNames.contains(name)
+                            ) {
+                                manager.toggleFilter(name)
+                                onDictChange(name)
+                            }
+                        }
                     }
                 }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
+        }
+    }
+
+    private struct LangGroup {
+        let label: String
+        let dicts: [String]
+    }
+
+    private func langGroups(dicts: [String], map: [String: String]) -> [LangGroup] {
+        var buckets: [(lang: AppLang?, dicts: [String])] = []
+        var byLang:  [String: [String]] = [:]
+        var none:    [String] = []
+        for d in dicts {
+            if let code = map[d], !code.isEmpty, let lang = AppLang(rawValue: code) {
+                byLang[code, default: []].append(d)
+                _ = lang
+            } else {
+                none.append(d)
+            }
+        }
+        for lang in AppLang.allCases where lang != .auto {
+            if let ds = byLang[lang.rawValue], !ds.isEmpty {
+                buckets.append((lang: lang, dicts: ds))
+            }
+        }
+        if !none.isEmpty {
+            buckets.append((lang: nil, dicts: none))
+        }
+        return buckets.map { b in
+            LangGroup(label: b.lang?.displayName ?? L.unassigned, dicts: b.dicts)
         }
     }
 
@@ -186,7 +243,7 @@ struct DictionaryPanel: View {
         return List(selection: $selectedWord) {
             if isRecent {
                 HStack {
-                    Text("最近查询")
+                    Text(L.recentSearches)
                         .font(.caption)
                         .foregroundStyle(Color.secondary)
                     Spacer()
@@ -333,6 +390,7 @@ struct DictionaryPanel: View {
         currentDictCss   = dicts.first.flatMap { manager.css(for: $0) }
         selectedWord     = nil
 
+        if let firstDict = dicts.first { onDictChange(firstDict) }
         onHeightChange(html != nil ? Self.detailHeight : Self.listHeight)
         searchFocusRequest += 1
         RecentStore.add(word)
@@ -344,6 +402,7 @@ struct DictionaryPanel: View {
         selectedDictName = name
         currentHTML      = manager.html(for: currentWord, in: name)
         currentDictCss   = manager.css(for: name)
+        onDictChange(name)
     }
 }
 
@@ -499,11 +558,11 @@ struct DictNotFoundView: View {
             Spacer()
             Image(systemName: "books.vertical")
                 .font(.largeTitle).foregroundStyle(.secondary)
-            Text("尚未导入词典").font(.headline)
-            Text("右键点击菜单栏图标，选择「导入词典」")
+            Text(L.noDictImported).font(.headline)
+            Text(L.importHint)
                 .foregroundStyle(.secondary).font(.subheadline)
                 .multilineTextAlignment(.center).padding(.horizontal, 16)
-            Button("打开词典目录") {
+            Button(L.openDictFolder) {
                 NSWorkspace.shared.open(DictionaryManager.dirURL)
             }
             .buttonStyle(.borderless)
@@ -518,7 +577,7 @@ struct ContentUnavailableViewCompat: View {
         VStack(spacing: 8) {
             Image(systemName: "character.book.closed")
                 .font(.largeTitle).foregroundStyle(.secondary)
-            Text("输入单词查询").foregroundStyle(.secondary)
+            Text(L.typeToSearch).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

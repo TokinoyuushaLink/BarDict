@@ -49,9 +49,10 @@ final class DictionaryManager: ObservableObject {
         savedEnabled = savedEnabled.filter { names.contains($0) }
         if savedEnabled.isEmpty { savedEnabled = infos.map { $0.name } }
 
-        var savedFilter = UserDefaults.standard.stringArray(forKey: Self.filterKey) ?? []
-        savedFilter = savedFilter.filter { Set(savedEnabled).contains($0) }
-        if savedFilter.isEmpty { savedFilter = savedEnabled }
+        // nil = key never written (first run) → default to all enabled
+        // []  = user explicitly cleared the filter → respect empty
+        let rawFilter   = UserDefaults.standard.stringArray(forKey: Self.filterKey)
+        let savedFilter = (rawFilter ?? savedEnabled).filter { Set(savedEnabled).contains($0) }
 
         var newStores: [String: DictionaryStore] = [:]
         for info in infos {
@@ -81,7 +82,7 @@ final class DictionaryManager: ObservableObject {
             if filterNames.isEmpty, let first = enabledNames.first { filterNames = [first] }
         } else {
             enabledNames.append(name)
-            filterNames.append(name)    // auto-add to filter when enabling
+            // Not auto-added to filter; user controls the filter bar independently.
         }
         persist()
     }
@@ -92,7 +93,6 @@ final class DictionaryManager: ObservableObject {
         let clickedLang = dictLangMap[name]   // nil = unassigned group
 
         if filterNames.contains(name) {
-            guard filterNames.count > 1 else { return }
             filterNames.removeAll { $0 == name }
         } else {
             // If the clicked dict is from a different language group, clear the current selection

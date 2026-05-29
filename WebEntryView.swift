@@ -186,6 +186,16 @@ struct WebEntryView: NSViewRepresentable {
             .def-sentence-to                   { color: #999; }
             a[href^="entry://"]                { color: #6699ff; }
             b.num                              { color: #777; }
+            /* Override hardcoded color attributes in legacy dict HTML
+               (e.g. <font color="black">) — HTML presentational hints
+               have 0 specificity so an attribute selector beats them. */
+            font[color], [color] { color: #e0e0e0 !important; }
+            a[color]             { color: #6699ff !important; }
+            /* Override inline style="color:black / #000000 / #000" */
+            [style*="color:black"],
+            [style*="color: black"],
+            [style*="color:#000000"],
+            [style*="color: #000000"] { color: #e0e0e0 !important; }
         }
         """
     }

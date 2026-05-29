@@ -177,7 +177,9 @@ struct DictionaryPanel: View {
                     filterBar
                     Divider()
                 }
-                if currentList.isEmpty {
+                if manager.filterNames.isEmpty {
+                    noFilterHint
+                } else if currentList.isEmpty {
                     ContentUnavailableViewCompat()
                 } else {
                     listView
@@ -277,6 +279,15 @@ struct DictionaryPanel: View {
     }
 
     // MARK: Word list
+
+    private var noFilterHint: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "line.3.horizontal.decrease.circle")
+                .font(.largeTitle).foregroundStyle(.secondary)
+            Text(L.noFilterSelected).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
 
     private var listView: some View {
         let isRecent = query.trimmingCharacters(in: .whitespaces).isEmpty

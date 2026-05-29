@@ -282,4 +282,14 @@ enum L {
         default:  return "Type a word to look up"
         }
     }
+
+    static var noFilterSelected: String {
+        switch current {
+        case .zh: return "未启用任何过滤"
+        case .ja: return "フィルターなし"
+        case .de: return "Kein Filter ausgewählt"
+        case .es: return "Sin filtro seleccionado"
+        default:  return "No filter selected"
+        }
+    }
 }

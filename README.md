@@ -14,6 +14,7 @@ macOS菜单栏mdx/mdd查词app
 - 允许多词典命中，多词典切换
 - 允许通过数控板切换视图
 
+*中文学习者推荐使用[新世纪英汉词典](https://github.com/TokinoyuushaLink/BarDict/releases/download/v1.0.0/mdx.zip)
 
 ## 操作：
 - 点击菜单栏图标/全局快捷键打开菜单栏app

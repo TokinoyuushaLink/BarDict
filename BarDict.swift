@@ -3,6 +3,7 @@
 import SwiftUI
 import AppKit
 import Carbon
+import UniformTypeIdentifiers
 
 @main
 struct DictApp: App {
@@ -245,6 +246,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         dictItem.submenu = dictSubmenu
         menu.addItem(dictItem)
 
+        // Export starred words
+        let exportStarSubmenu = NSMenu()
+        let exportTxtItem = NSMenuItem(title: L.exportAsTxt, action: #selector(exportStarredAsTxt), keyEquivalent: "")
+        exportTxtItem.target = self
+        exportStarSubmenu.addItem(exportTxtItem)
+        let exportCsvItem = NSMenuItem(title: L.exportAsCsv, action: #selector(exportStarredAsCsv), keyEquivalent: "")
+        exportCsvItem.target = self
+        exportStarSubmenu.addItem(exportCsvItem)
+        let exportStarItem = NSMenuItem(title: L.exportStarredWords, action: nil, keyEquivalent: "")
+        exportStarItem.submenu = exportStarSubmenu
+        menu.addItem(exportStarItem)
+
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: L.quit, action: #selector(NSApp.terminate(_:)), keyEquivalent: "q"))
 
@@ -359,6 +372,28 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc private func toggleEmbeddedCSS() {
         let current = UserDefaults.standard.object(forKey: "useEmbeddedCSS") as? Bool ?? true
         UserDefaults.standard.set(!current, forKey: "useEmbeddedCSS")
+    }
+
+    @objc private func exportStarredAsTxt() {
+        let words = StarStore.load()
+        let content = words.joined(separator: "\n")
+        saveExportFile(content: content, suggestedName: "starred.txt", uti: .plainText)
+    }
+
+    @objc private func exportStarredAsCsv() {
+        let words = StarStore.load()
+        let escaped = words.map { "\"\($0.replacingOccurrences(of: "\"", with: "\"\""))\"" }
+        let content = escaped.joined(separator: "\n")
+        saveExportFile(content: content, suggestedName: "starred.csv", uti: .commaSeparatedText)
+    }
+
+    private func saveExportFile(content: String, suggestedName: String, uti: UTType) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = suggestedName
+        panel.allowedContentTypes = [uti]
+        if panel.runModal() == .OK, let url = panel.url {
+            try? content.write(to: url, atomically: true, encoding: .utf8)
+        }
     }
 
     @objc private func setFontSize(_ sender: NSMenuItem) {

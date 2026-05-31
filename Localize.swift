@@ -292,4 +292,54 @@ enum L {
         default:  return "No filter selected"
         }
     }
+
+    static var noStarredWords: String {
+        switch current {
+        case .zh: return "暂无星标单词"
+        case .ja: return "スター済みの単語がありません"
+        case .de: return "Keine Favoriten"
+        case .es: return "Sin favoritos"
+        default:  return "No Starred Words"
+        }
+    }
+
+    static var starredWords: String {
+        switch current {
+        case .zh: return "星标单词"
+        case .ja: return "スター"
+        case .de: return "Favoriten"
+        case .es: return "Favoritos"
+        default:  return "Starred"
+        }
+    }
+
+    static var exportStarredWords: String {
+        switch current {
+        case .zh: return "导出星标单词"
+        case .ja: return "スター単語をエクスポート"
+        case .de: return "Favoriten exportieren"
+        case .es: return "Exportar favoritos"
+        default:  return "Export Starred Words"
+        }
+    }
+
+    static var exportAsTxt: String {
+        switch current {
+        case .zh: return "导出为 TXT"
+        case .ja: return "TXT でエクスポート"
+        case .de: return "Als TXT exportieren"
+        case .es: return "Exportar como TXT"
+        default:  return "Export as TXT"
+        }
+    }
+
+    static var exportAsCsv: String {
+        switch current {
+        case .zh: return "导出为 CSV"
+        case .ja: return "CSV でエクスポート"
+        case .de: return "Als CSV exportieren"
+        case .es: return "Exportar como CSV"
+        default:  return "Export as CSV"
+        }
+    }
 }

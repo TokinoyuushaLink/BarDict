@@ -14,6 +14,8 @@ struct DictionaryPanel: View {
     @State private var currentHTML:  String?
     @State private var selectedWord: String? = nil
     @State private var recents:      [String] = RecentStore.load()
+    @State private var starred:      [String] = StarStore.load()
+    @State private var showStarred:  Bool     = false
     @State private var searchFocusRequest: Int = 0
     @State private var hoveredWord:  String? = nil
     @State private var pressedWord:  String? = nil
@@ -63,7 +65,9 @@ struct DictionaryPanel: View {
     private static let fontSizes: [CGFloat] = [13, 14.3, 15.6, 16.9, 18.2]
 
     private var currentList: [String] {
-        query.trimmingCharacters(in: .whitespaces).isEmpty ? recents : suggestions
+        let q = query.trimmingCharacters(in: .whitespaces)
+        if q.isEmpty { return showStarred ? starred : recents }
+        return suggestions
     }
 
     var body: some View {
@@ -179,8 +183,6 @@ struct DictionaryPanel: View {
                 }
                 if manager.filterNames.isEmpty {
                     noFilterHint
-                } else if currentList.isEmpty {
-                    ContentUnavailableViewCompat()
                 } else {
                     listView
                 }
@@ -293,14 +295,45 @@ struct DictionaryPanel: View {
         let isRecent = query.trimmingCharacters(in: .whitespaces).isEmpty
         return VStack(spacing: 0) {
             if isRecent {
-                HStack {
-                    Text(L.recentSearches)
-                        .font(.caption)
-                        .foregroundStyle(Color.secondary)
-                    Spacer()
+                HStack(spacing: 0) {
                     Button {
-                        RecentStore.clearAll()
-                        recents = RecentStore.load()
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            showStarred = false
+                            selectedWord = nil
+                        }
+                    } label: {
+                        Text(L.recentSearches)
+                            .font(.caption)
+                            .fontWeight(showStarred ? .regular : .semibold)
+                            .foregroundStyle(showStarred ? Color.secondary : Color.primary)
+                    }
+                    .buttonStyle(.plain)
+
+                    Divider().frame(height: 12).padding(.horizontal, 6)
+
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            showStarred = true
+                            selectedWord = nil
+                        }
+                    } label: {
+                        Text(L.starredWords)
+                            .font(.caption)
+                            .fontWeight(showStarred ? .semibold : .regular)
+                            .foregroundStyle(showStarred ? Color.primary : Color.secondary)
+                    }
+                    .buttonStyle(.plain)
+
+                    Spacer()
+
+                    Button {
+                        if showStarred {
+                            StarStore.clearAll()
+                            starred = StarStore.load()
+                        } else {
+                            RecentStore.clearAll()
+                            recents = RecentStore.load()
+                        }
                     } label: {
                         Image(systemName: "trash")
                             .font(.caption)
@@ -312,51 +345,82 @@ struct DictionaryPanel: View {
                 .padding(.vertical, 5)
                 Divider()
             }
-            List(selection: $selectedWord) {
-            ForEach(currentList, id: \.self) { word in
-                let selected   = selectedWord == word
-                let showDelete = isRecent && (selected || hoveredWord == word)
-                HStack(spacing: 0) {
-                    Button {
-                        selectedWord = word
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { lookup(word) }
-                    } label: {
-                        Text(word)
-                            .foregroundStyle(selected ? Color.white : Color.primary)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    if showDelete {
-                        Button {
-                            RecentStore.remove(word)
-                            recents = RecentStore.load()
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.caption)
-                                .foregroundStyle(selected ? Color.white.opacity(0.7) : Color.secondary)
-                                .padding(.trailing, 2)
+            if currentList.isEmpty {
+                if isRecent && showStarred {
+                    NoStarredWordsView()
+                } else {
+                    ContentUnavailableViewCompat()
+                }
+            } else {
+                List(selection: $selectedWord) {
+                    ForEach(currentList, id: \.self) { word in
+                        let selected      = selectedWord == word
+                        let isWordStarred = starred.contains { $0.lowercased() == word.lowercased() }
+                        let showStar      = isWordStarred || selected || hoveredWord == word
+                        let showDelete    = isRecent && !showStarred && (selected || hoveredWord == word)
+                        HStack(spacing: 0) {
+                            Button {
+                                selectedWord = word
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { lookup(word) }
+                            } label: {
+                                Text(word)
+                                    .foregroundStyle(selected ? Color.white : Color.primary)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            if showStar {
+                                Button {
+                                    if isWordStarred {
+                                        StarStore.remove(word)
+                                    } else {
+                                        StarStore.add(word)
+                                    }
+                                    starred = StarStore.load()
+                                } label: {
+                                    Image(systemName: isWordStarred ? "star.fill" : "star")
+                                        .font(.caption)
+                                        .foregroundStyle(
+                                            isWordStarred
+                                                ? (selected ? Color.white.opacity(0.9)
+                                                            : (colorScheme == .dark ? Color.yellow : Color(white: 0.35)))
+                                                : (selected ? Color.white.opacity(0.7) : Color.secondary)
+                                        )
+                                        .padding(.trailing, 2)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            if showDelete {
+                                Button {
+                                    RecentStore.remove(word)
+                                    recents = RecentStore.load()
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.caption)
+                                        .foregroundStyle(selected ? Color.white.opacity(0.7) : Color.secondary)
+                                        .padding(.trailing, 2)
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
-                        .buttonStyle(.plain)
+                        .tag(word)
+                        .listRowBackground(
+                            selected ? Color.accentColor :
+                            pressedWord == word ? Color.secondary.opacity(0.18) :
+                            Color.clear
+                        )
+                        .listRowSeparator(.hidden)
+                        .onHover { isHovered in hoveredWord = isHovered ? word : nil }
+                        .simultaneousGesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { _ in pressedWord = word }
+                                .onEnded   { _ in pressedWord = nil }
+                        )
                     }
                 }
-                .tag(word)
-                .listRowBackground(
-                    selected ? Color.accentColor :
-                    pressedWord == word ? Color.secondary.opacity(0.18) :
-                    Color.clear
-                )
-                .listRowSeparator(.hidden)
-                .onHover { isHovered in hoveredWord = isHovered ? word : nil }
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { _ in pressedWord = word }
-                        .onEnded   { _ in pressedWord = nil }
-                )
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
             }
-            }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
         }
     }
 
@@ -571,6 +635,44 @@ private struct DictChip: View {
     }
 }
 
+// MARK: - Starred words
+
+enum StarStore {
+    private static var url: URL {
+        let base = FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("BarDict")
+        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        return base.appendingPathComponent("starred.json")
+    }
+
+    static func load() -> [String] {
+        guard let data = try? Data(contentsOf: url),
+              let arr  = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+        return arr
+    }
+
+    static func add(_ word: String) {
+        var list = load()
+        guard !list.contains(where: { $0.lowercased() == word.lowercased() }) else { return }
+        list.append(word)
+        guard let data = try? JSONEncoder().encode(list) else { return }
+        try? data.write(to: url, options: .atomic)
+    }
+
+    static func remove(_ word: String) {
+        var list = load()
+        list.removeAll { $0.lowercased() == word.lowercased() }
+        guard let data = try? JSONEncoder().encode(list) else { return }
+        try? data.write(to: url, options: .atomic)
+    }
+
+    static func clearAll() {
+        guard let data = try? JSONEncoder().encode([String]()) else { return }
+        try? data.write(to: url, options: .atomic)
+    }
+}
+
 // MARK: - Recent searches
 
 private enum RecentStore {
@@ -713,6 +815,17 @@ struct ContentUnavailableViewCompat: View {
             Image(systemName: "character.book.closed")
                 .font(.largeTitle).foregroundStyle(.secondary)
             Text(L.typeToSearch).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+struct NoStarredWordsView: View {
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "star")
+                .font(.largeTitle).foregroundStyle(.secondary)
+            Text(L.noStarredWords).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
